@@ -5,10 +5,16 @@
 var express = require('express');
 var app = express();
 
+// dns module needed in the URL shortener
+const dns = require('dns')
+
 // enable CORS (https://en.wikipedia.org/wiki/Cross-origin_resource_sharing)
 // so that your API is remotely testable by FCC 
 var cors = require('cors');
 app.use(cors({optionSuccessStatus: 200}));  // some legacy browsers choke on 204
+
+
+app.set('view engine', 'ejs');
 
 // http://expressjs.com/en/starter/static-files.html
 app.use(express.static('public'));
@@ -60,6 +66,55 @@ app.get('/api/whoami', (req, res) => {
   const returnJSON = {"ipaddress": ipaddress, "language": language, "software": software}
   
   res.json(returnJSON);
+})
+
+// API Project: URL Shortener Microservice -- does not save the URLs to any DB!
+let shortURLs = {1: "http://www.sodankyla.fi/Pages/Etusivu.aspx", 2: "https://luosto.fi/"}
+let errorMessage = null;
+
+// GET route for the input form and a list of shortened URLs
+app.get('/api/shorturl', (req, res) => {
+  errorMessage = null
+  res.render('add-url.ejs', {shortURLs: shortURLs, errorMessage: errorMessage});
+})
+
+// GET route for shortcut URL, a hit redirects to the target page
+app.get('/api/shorturl/:url', (req, res) => {
+  const urlIndex = req.params.url
+  if (shortURLs[urlIndex]) {
+    res.redirect(shortURLs[urlIndex])
+  }
+  
+  else { // If the shortcut does not exist, display error and render add page
+    errorMessage = `Shortcut #${urlIndex} does not exist`;
+    res.render('add-url.ejs', {shortURLs: shortURLs, errorMessage: errorMessage});
+  }
+})
+
+// POST route for adding new URLs to the list
+app.post('/api/shorturl/new', express.urlencoded({extended: true}), (req, res) => { // Use express.urlencoded({extended: true}) to extract the body of a POST request, not used as a middleware for all routes in this task just for experiment's sake
+  if (/^http/.test(req.body.url)) { // Test if the given address starts with http
+    
+    let wwwAddress = req.body.url.split('//')[1].split('/')[0] // Get the address without https:// and without /xxx for dns module
+    dns.lookup(wwwAddress, (error, address) => {
+      if (address === undefined) { // dns.lookup does not recognize the accept -> invalid url
+        errorMessage = 'Error: invalid URL, please try again';
+        res.render('add-url.ejs', {shortURLs: shortURLs, errorMessage: errorMessage});
+      } 
+
+      else { // Add url to the URL KV pairs and re-load the page
+        errorMessage = null;
+        let urlIndex = Object.keys(shortURLs).length + 1;
+        shortURLs[urlIndex] = req.body.url // Add the url to the shortURLs object
+        res.render('add-url.ejs', {shortURLs: shortURLs, errorMessage: errorMessage}); // Re-render the add-url page to keep the list updated
+      } 
+    })  
+  }
+  
+  else { // Address does not start with http -> invalid url
+    errorMessage = 'Error: invalid URL, please try again';
+    res.render('add-url.ejs', {shortURLs: shortURLs, errorMessage: errorMessage});
+  }
 })
 
 
