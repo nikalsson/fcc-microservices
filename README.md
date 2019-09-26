@@ -24,6 +24,8 @@ e.g. `{"unix": 1479663089000 ,"utc": "Sun, 20 Nov 2016 17:31:29 GMT"}`.
 
 # API Project: Request Header Parser Microservice for freeCodeCamp
 
+/api/whoami
+
 ### User stories:
 1. I can get the IP address, preferred languages (from header `Accept-Language`) and system infos (from header `User-Agent`) for my device.
 
@@ -36,6 +38,8 @@ e.g. `{"unix": 1479663089000 ,"utc": "Sun, 20 Nov 2016 17:31:29 GMT"}`.
 ---
 
 # API Project: URL Shortener Microservice for freeCodeCamp
+
+/api/shorturl
 
 
 ### User Stories
@@ -78,6 +82,8 @@ Form is served in /api/exercises
 
 
 # API Project: File Metadata Microservice for freeCodeCamp
+
+/api/file-upload
 
 ###    User stories:
 1. I can submit a form that includes a file upload.
