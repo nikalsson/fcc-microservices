@@ -1,13 +1,5 @@
-<!DOCTYPE html>
+<% include ./partials/header %>
 
-<html>
-  <head>
-    <title>URL shortener input form</title>
-    <link rel="shortcut icon" href="https://cdn.hyperdev.com/us-east-1%3A52a203ff-088b-420f-81be-45bf559d01b1%2Ffavicon.ico" type="image/x-icon"/>
-    <link href="https://fonts.googleapis.com/css?family=Roboto" rel="stylesheet" type="text/css">
-    <link href="/style.css" rel="stylesheet" type="text/css">
-  </head>
-  <body>
     <div class="container">
       <% if (errorMessage) { %> 
         <h2 style="color: red;"><%= errorMessage %></h2>
@@ -28,5 +20,5 @@
         </ul>
       </div>
     </div>
-  </body>
-</html>
+
+<% include ./partials/footer %>

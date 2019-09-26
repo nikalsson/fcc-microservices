@@ -1,9 +1,10 @@
 // require components
-const express = require('express');
-const app = express();
-const dns = require('dns'); // dns module needed in the URL shortener
-const cors = require('cors'); // enable CORS (https://en.wikipedia.org/wiki/Cross-origin_resource_sharing) so that your API is remotely testable by FCC
-const mongoose = require('mongoose'); // mongoose for MongoDB database usage
+const   express = require('express'),
+        app = express(),
+        dns = require('dns'), // dns module needed in the URL shortener
+        cors = require('cors'), // enable CORS (https://en.wikipedia.org/wiki/Cross-origin_resource_sharing) so that your API is remotely testable by FCC
+        mongoose = require('mongoose'), // mongoose for MongoDB database usage
+        multer = require('multer'); // middleware for handling multipart/form-data, which is primarily used for uploading files 
 
 // configure the app
 app.set('view engine', 'ejs');
@@ -15,13 +16,146 @@ mongoose.connect(process.env.MLABURI, {useNewUrlParser: true, useUnifiedTopology
 const Schema = mongoose.Schema
 
 
+// configure multer for file upload
+const storage = multer.diskStorage({ // configure storing files to disk - the files do not appear properly in Glitch GUI but console shows that they are uploaded successfully
+  destination: function (req, file, cb) {
+    cb(null, './uploads')
+  },
+  filename: function (req, file, cb) {
+    cb(null, file.fieldname + '-' + Date.now())
+  }
+})
+
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fieldSize: 1024 // 1 MB (max file size)
+  }
+})
+
 // serve the index page
-app.get("/", function (req, res) {
-  res.sendFile(__dirname + '/views/index.html');
+app.get("/", (req, res) => {
+  res.render('index');
 });
 
-// API Project: Exercise Tracker
 
+// API Project: File Metadata Microservice
+
+// GET file upload page and form
+app.get("/api/file-upload", (req, res) => {
+  res.render('file-upload');
+})
+
+// POST post the file
+app.post("/api/file-upload", upload.single('upfile'), async (req, res) => {
+  const upfile = req.file;
+  if (!upfile) { // If user did not select a file
+    res.json({error: "No file was selected!"});
+  } 
+  
+  // Display the information desired by freeCodeCamp task on successful upload
+  else { 
+    res.json({
+      success: "The file was uploaded",
+      filename: upfile.originalname,
+      size: upfile.size
+    })
+  }
+})
+
+
+// API Project: Timestamp Microservice 
+app.get("/api/timestamp/:date_string?", (req, res) => {
+  const userInput = req.params.date_string
+  const unixDate = new RegExp('^\\d+$'); // Match Unix date in numbers
+  const ISODate = new RegExp(/^(\d{4})-(\d{1,2})-(\d{1,2})/) // Match YYYY-MM-DD and YYYY-M-D
+  
+  let returnJSON = {"error" : "Invalid Date"}
+  
+  if ( unixDate.test(userInput) || ISODate.test(userInput)){
+    // If the date is in unix format, convert to a number with parseInt
+    let date = (unixDate.test(userInput)) ? new Date(parseInt(userInput)) : new Date(userInput);
+
+    // If the date is in ISO format but incorrect, do not change the returnJSON
+    if (typeof date === 'object' && new Date(date) == "Invalid Date") {
+      null
+    } 
+    
+    // If the date string is valid the api returns a JSON having the following structure
+    else {
+      returnJSON = {
+        "unix": date.getTime(),
+        "utc" : date.toUTCString()
+      }  
+    }
+  }
+  
+  res.json(returnJSON);
+});
+
+// API Project: Request Header Parser Microservice
+app.get('/api/whoami', (req, res) => {
+  // Client IP from headers X-Forwarded-For: client, proxy1, proxy2 -- get the first address using split()
+  const ipaddress = req.headers['x-forwarded-for'].split(',')[0]
+  const language = req.headers['accept-language'];
+  const software = req.headers['user-agent']
+  
+  const returnJSON = {"ipaddress": ipaddress, "language": language, "software": software}
+  
+  res.json(returnJSON);
+})
+
+// API Project: URL Shortener Microservice -- does not save the URLs to any DB!
+let shortURLs = {1: "http://www.sodankyla.fi/Pages/Etusivu.aspx", 2: "https://luosto.fi/"}
+let errorMessage = null;
+
+// GET route for the input form and a list of shortened URLs
+app.get('/api/shorturl', (req, res) => {
+  errorMessage = null
+  res.render('add-url', {shortURLs: shortURLs, errorMessage: errorMessage});
+})
+
+// GET route for shortcut URL, a hit redirects to the target page
+app.get('/api/shorturl/:url', (req, res) => {
+  const urlIndex = req.params.url
+  if (shortURLs[urlIndex]) {
+    res.redirect(shortURLs[urlIndex])
+  }
+  
+  else { // If the shortcut does not exist, display error and render add page
+    errorMessage = `Shortcut #${urlIndex} does not exist`;
+    res.render('add-url', {shortURLs: shortURLs, errorMessage: errorMessage});
+  }
+})
+
+// POST route for adding new URLs to the list
+app.post('/api/shorturl/new', (req, res) => {
+  if (/^http/.test(req.body.url)) { // Test if the given address starts with http
+    
+    let wwwAddress = req.body.url.split('//')[1].split('/')[0] // Get the address without https:// and without /xxx for dns module
+    dns.lookup(wwwAddress, (error, address) => {
+      if (address === undefined) { // dns.lookup does not recognize the accept -> invalid url
+        errorMessage = 'Error: invalid URL, please try again';
+        res.render('add-url', {shortURLs: shortURLs, errorMessage: errorMessage});
+      } 
+
+      else { // Add url to the URL KV pairs and re-load the page
+        errorMessage = null;
+        let urlIndex = Object.keys(shortURLs).length + 1;
+        shortURLs[urlIndex] = req.body.url // Add the url to the shortURLs object
+        res.render('add-url', {shortURLs: shortURLs, errorMessage: errorMessage}); // Re-render the add-url page to keep the list updated
+      } 
+    })  
+  }
+  
+  else { // Address does not start with http -> invalid url
+    errorMessage = 'Error: invalid URL, please try again';
+    res.render('add-url', {shortURLs: shortURLs, errorMessage: errorMessage});
+  }
+})
+
+
+// API Project: Exercise Tracker
 // First set up the user and exercise schemas, they are associated with each other
 const userSchema = new Schema({
   username: String,
@@ -51,10 +185,9 @@ const Exercise = mongoose.model('Exercise', exerciseSchema)
 
 // GET - Serve the form for adding users or exercies
 app.get("/api/exercises", (req, res) => {
-  res.render('exercise-tracker.ejs');
+  res.render('exercise-tracker');
 })
 
-//2. I can get an array of all users by getting api/exercise/users with the same info as when creating a user.
 //GET - Get an array of all the users
 app.get("/api/exercises/users", async (req, res) => {
   User.find({}, (error, foundUsers) => {
@@ -139,98 +272,6 @@ app.get("/api/exercises/log/:username", async (req, res) => {
       }
     })
 })
-
-// API Project: Timestamp Microservice 
-app.get("/api/timestamp/:date_string?", (req, res) => {
-  const userInput = req.params.date_string
-  const unixDate = new RegExp('^\\d+$'); // Match Unix date in numbers
-  const ISODate = new RegExp(/^(\d{4})-(\d{1,2})-(\d{1,2})/) // Match YYYY-MM-DD and YYYY-M-D
-  
-  let returnJSON = {"error" : "Invalid Date"}
-  
-  if ( unixDate.test(userInput) || ISODate.test(userInput)){
-    // If the date is in unix format, convert to a number with parseInt
-    let date = (unixDate.test(userInput)) ? new Date(parseInt(userInput)) : new Date(userInput);
-
-    // If the date is in ISO format but incorrect, do not change the returnJSON
-    if (typeof date === 'object' && new Date(date) == "Invalid Date") {
-      null
-    } 
-    
-    // If the date string is valid the api returns a JSON having the following structure
-    else {
-      returnJSON = {
-        "unix": date.getTime(),
-        "utc" : date.toUTCString()
-      }  
-    }
-  }
-  
-  // console.log(unixDate.test(date))
-  res.json(returnJSON);
-});
-
-// API Project: Request Header Parser Microservice
-app.get('/api/whoami', (req, res) => {
-  // Client IP from headers X-Forwarded-For: client, proxy1, proxy2 -- get the first address using split()
-  const ipaddress = req.headers['x-forwarded-for'].split(',')[0]
-  const language = req.headers['accept-language'];
-  const software = req.headers['user-agent']
-  
-  const returnJSON = {"ipaddress": ipaddress, "language": language, "software": software}
-  
-  res.json(returnJSON);
-})
-
-// API Project: URL Shortener Microservice -- does not save the URLs to any DB!
-let shortURLs = {1: "http://www.sodankyla.fi/Pages/Etusivu.aspx", 2: "https://luosto.fi/"}
-let errorMessage = null;
-
-// GET route for the input form and a list of shortened URLs
-app.get('/api/shorturl', (req, res) => {
-  errorMessage = null
-  res.render('add-url.ejs', {shortURLs: shortURLs, errorMessage: errorMessage});
-})
-
-// GET route for shortcut URL, a hit redirects to the target page
-app.get('/api/shorturl/:url', (req, res) => {
-  const urlIndex = req.params.url
-  if (shortURLs[urlIndex]) {
-    res.redirect(shortURLs[urlIndex])
-  }
-  
-  else { // If the shortcut does not exist, display error and render add page
-    errorMessage = `Shortcut #${urlIndex} does not exist`;
-    res.render('add-url.ejs', {shortURLs: shortURLs, errorMessage: errorMessage});
-  }
-})
-
-// POST route for adding new URLs to the list
-app.post('/api/shorturl/new', (req, res) => {
-  if (/^http/.test(req.body.url)) { // Test if the given address starts with http
-    
-    let wwwAddress = req.body.url.split('//')[1].split('/')[0] // Get the address without https:// and without /xxx for dns module
-    dns.lookup(wwwAddress, (error, address) => {
-      if (address === undefined) { // dns.lookup does not recognize the accept -> invalid url
-        errorMessage = 'Error: invalid URL, please try again';
-        res.render('add-url.ejs', {shortURLs: shortURLs, errorMessage: errorMessage});
-      } 
-
-      else { // Add url to the URL KV pairs and re-load the page
-        errorMessage = null;
-        let urlIndex = Object.keys(shortURLs).length + 1;
-        shortURLs[urlIndex] = req.body.url // Add the url to the shortURLs object
-        res.render('add-url.ejs', {shortURLs: shortURLs, errorMessage: errorMessage}); // Re-render the add-url page to keep the list updated
-      } 
-    })  
-  }
-  
-  else { // Address does not start with http -> invalid url
-    errorMessage = 'Error: invalid URL, please try again';
-    res.render('add-url.ejs', {shortURLs: shortURLs, errorMessage: errorMessage});
-  }
-})
-
 
 // listen for requests :)
 var listener = app.listen(process.env.PORT, function () {
